@@ -10,8 +10,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset
 
-image_directory = '/Users/emilyyip/Desktop/MRI/Anatomical_mag_echo5/img/'
-mask_directory = '/Users/emilyyip/Desktop/MRI/whole_liver_segmentation/'
+image_directory = '/Users/nicole/Documents/Anatomical_mag_echo5/img/'
+mask_directory = '/Users/nicole/Documents/whole_liver_segmentation/'
 
 def get_file_paths(image_directory, mask_directory):
     image_paths = [os.path.join(image_directory, filename) for filename in os.listdir(image_directory) if filename.endswith('.nii')]
@@ -109,8 +109,6 @@ class DecoderBlock(nn.Module):
         x = self.up(x)
         # Ensure that the upsampled x has the same dimensions as skip before concatenating
         if x.size() != skip.size():
-            # Optionally add a print statement here to debug sizes
-            # print("Adjusting size from", x.size(), "to", skip.size())
             x = F.interpolate(x, size=skip.size()[2:], mode='trilinear', align_corners=True)
         x = torch.cat([x, skip], dim=1)
         x = self.conv(x)
@@ -119,8 +117,7 @@ class DecoderBlock(nn.Module):
 class VNet(nn.Module):
     def __init__(self):
         super(VNet, self).__init__()
-        # Adjust the filters to start with 1 if the input images are single-channel
-        filters = [1, 64, 128, 256, 256]  # Starting with 1 channel now
+        filters = [1, 64, 128, 256, 256]
         self.encoders = nn.ModuleList([
             EncoderBlock(filters[i], filters[i+1], dropout=0.1, res_connect=True)
             for i in range(len(filters)-1)
@@ -128,14 +125,15 @@ class VNet(nn.Module):
 
         self.bottleneck = ConvBlock(filters[-1], filters[-1], dropout=0.1, res_connect=True)
 
-        # Assuming symmetrical structure for the decoder
+        # Update the number of input channels for decoder blocks to match encoder blocks
         self.decoders = nn.ModuleList([
-            EncoderBlock(filters[i+1], filters[i], dropout=0.1, res_connect=True)
+            DecoderBlock(filters[i+1], filters[i])
             for i in reversed(range(len(filters)-1))
         ])
 
-        self.final_conv = nn.Conv3d(filters[0], 1, kernel_size=1)  # Output segmentation map
-
+        # Ensure consistency in the number of input and output channels for the final convolutional layer
+        self.final_conv = nn.Conv3d(filters[-1], 1, kernel_size=1)
+    
     def forward(self, x):
         skips = []
         for encoder in self.encoders:
